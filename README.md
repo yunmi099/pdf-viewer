@@ -20,19 +20,24 @@
 
 1. 프로젝트를 클론합니다.
 
-   ```bash
+   ```
    git clone https://github.com/yunmi099/pdf-viewer.git
-프로젝트 디렉토리로 이동합니다.
+   ```
+2. 프로젝트 디렉토리로 이동합니다.
 
-cd pdf-viewer
-필요한 패키지를 설치합니다.
-
-npm install
-실행
-개발 서버를 시작합니다.
-
-npm start
-웹 브라우저에서 http://localhost:3000 주소로 접속합니다.
+   ```
+   cd pdf-viewer
+   ```
+3. 필요한 패키지를 설치합니다.
+   ```
+   npm install
+   ```
+4. 실행
+   개발 서버를 시작합니다.
+   ```
+   npm start
+   ```
+5. 웹 브라우저에서 http://localhost:3000 주소로 접속합니다.
 
 ## main branch
 # 주요 기능
