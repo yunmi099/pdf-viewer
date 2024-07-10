@@ -1,24 +1,29 @@
 import React, { useState, useEffect, useRef } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
 import 'pdfjs-dist/webpack';
-import Tesseract from 'tesseract.js';
+import { TextItem } from 'pdfjs-dist/types/src/display/api';
 
 // PDF.js의 워커 파일 경로 설정
 pdfjsLib.GlobalWorkerOptions.workerSrc = `${process.env.PUBLIC_URL}/pdfjs-dist/build/pdf.worker.entry`;
 
 const PdfViewer = ({ file }: { file: File }) => {
+  // 상태 훅을 사용하여 페이지 수, 현재 페이지, 파싱된 내용 저장
   const [numPages, setNumPages] = useState<number | null>(null);
   const [currentPage, setCurrentPage] = useState<number>(1);
-  const [parsedTables, setParsedTables] = useState<string[][][]>([]);
+  const [parsedContent, setParsedContent] = useState<string[][][]>([]);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const renderTaskRef = useRef<any>(null);
 
+  // PDF가 성공적으로 로드되었을 때 호출되는 함수
   const onDocumentLoadSuccess = (pdf: pdfjsLib.PDFDocumentProxy) => {
-    setNumPages(pdf.numPages);
-    renderPage(pdf, currentPage);
+    setNumPages(pdf.numPages); // 총 페이지 수 설정
+    renderPage(pdf, currentPage); // 현재 페이지 렌더링
+    parsePdf(pdf); // PDF 파싱 시작
   };
 
+  // 페이지를 렌더링하는 함수
   const renderPage = async (pdf: pdfjsLib.PDFDocumentProxy, pageNumber: number) => {
+    // 기존 렌더 작업이 있다면 취소
     if (renderTaskRef.current) {
       try {
         await renderTaskRef.current.cancel();
@@ -27,8 +32,8 @@ const PdfViewer = ({ file }: { file: File }) => {
       }
     }
 
-    const page = await pdf.getPage(pageNumber);
-    const viewport = page.getViewport({ scale: 1.5 , rotation: 0});
+    const page = await pdf.getPage(pageNumber); // 페이지 가져오기
+    const viewport = page.getViewport({ scale: 1.5 }); // 뷰포트 설정
     const canvas = canvasRef.current;
     if (!canvas) {
       return;
@@ -45,11 +50,11 @@ const PdfViewer = ({ file }: { file: File }) => {
       viewport: viewport,
     };
 
+    // 페이지 렌더링
     renderTaskRef.current = page.render(renderContext);
     renderTaskRef.current.promise.then(
       () => {
         renderTaskRef.current = null;
-        extractTextFromCanvas(canvas);
       },
       (error: any) => {
         if (error.name === 'RenderingCancelledException') {
@@ -61,21 +66,60 @@ const PdfViewer = ({ file }: { file: File }) => {
     );
   };
 
-  const extractTextFromCanvas = async (canvas: HTMLCanvasElement) => {
-    const { data: { text } } = await Tesseract.recognize(canvas, 'kor', {
-      logger: (m) => console.log(m),
+  // PDF를 파싱하는 함수
+  const parsePdf = async (pdf: pdfjsLib.PDFDocumentProxy) => {
+    const parsedData: string[][][] = []; // 파싱된 데이터를 저장할 배열입니다.
+  
+    // PDF 문서의 각 페이지를 순회합니다.
+    for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+      const page = await pdf.getPage(pageNum); // 페이지를 가져옵니다.
+      const textContent = await page.getTextContent(); // 페이지의 텍스트 내용을 가져옵니다.
+      const parsedPageData = parseTextContent(textContent.items as TextItem[]); // 텍스트 내용을 파싱합니다.
+      parsedData.push(parsedPageData); // 파싱된 페이지 데이터를 배열에 추가합니다.
+    }
+  
+    setParsedContent(parsedData); // 파싱된 데이터를 상태에 저장합니다.
+  };
+  
+
+  // 텍스트 내용을 파싱하는 함수
+  const parseTextContent = (items: TextItem[]): string[][] => {
+    // 각 행을 저장할 객체를 만듭니다. 행의 Y 좌표를 키로 사용합니다.
+    const rows: { [key: number]: { text: string, x: number }[] } = {};
+  
+    // 각 텍스트 항목을 순회합니다.
+    items.forEach((item) => {
+      const transform = item.transform; // 텍스트 항목의 변환 매트릭스를 가져옵니다.
+      const x = transform[4]; // 텍스트의 X 좌표
+      const y = transform[5]; // 텍스트의 Y 좌표
+      const text = item.str; // 실제 텍스트 내용
+  
+      // Y 좌표를 키로 하는 행이 없으면 새로 만듭니다.
+      if (!rows[y]) {
+        rows[y] = [];
+      }
+  
+      // 해당 행에 텍스트 항목을 추가합니다.
+      rows[y].push({ text, x });
     });
-    const tableData = extractTableData(text);
-    setParsedTables(prev => [...prev, tableData]);
+  
+    // 행들을 Y 좌표 기준으로 정렬합니다 (Y 값이 큰 것부터 작은 순서로).
+    const sortedRows = Object.keys(rows)
+      .sort((a, b) => parseFloat(b) - parseFloat(a))
+      .map((y) => {
+        const row = rows[parseFloat(y)];
+        // 각 행의 텍스트 항목들을 X 좌표 기준으로 정렬합니다.
+        row.sort((a, b) => a.x - b.x);
+        // 정렬된 텍스트 항목들의 텍스트 내용만 추출하여 배열로 만듭니다.
+        return row.map((cell) => cell.text);
+      });
+  
+    console.log('Parsed Table Data:', sortedRows);
+    return sortedRows; // 최종적으로 파싱된 행렬 데이터를 반환합니다.
   };
+  
 
-  const extractTableData = (text: string): string[][] => {
-    const lines = text.split('\n').filter(line => line.trim() !== '');
-    const tableLines = lines.filter(line => /^\d+/.test(line)); // 숫자로 시작하는 줄 필터링
-    const table = tableLines.map(line => line.split(/\s+/)); // 공백으로 나눠서 배열로 만듦
-    return table;
-  };
-
+  // 파일이 변경되었을 때 PDF 로드 시작
   useEffect(() => {
     if (file) {
       const reader = new FileReader();
@@ -91,6 +135,7 @@ const PdfViewer = ({ file }: { file: File }) => {
     }
   }, [file]);
 
+  // 현재 페이지가 변경되었을 때 페이지 렌더링
   useEffect(() => {
     if (file && numPages) {
       const reader = new FileReader();
@@ -99,7 +144,7 @@ const PdfViewer = ({ file }: { file: File }) => {
         if (result && typeof result !== 'string') {
           const typedArray = new Uint8Array(result);
           const loadingTask = pdfjsLib.getDocument({ data: typedArray });
-          loadingTask.promise.then(pdf => {
+          loadingTask.promise.then((pdf) => {
             renderPage(pdf, currentPage);
           });
         }
@@ -108,12 +153,14 @@ const PdfViewer = ({ file }: { file: File }) => {
     }
   }, [currentPage, numPages]);
 
+  // 이전 페이지로 이동
   const goToPrevPage = () => {
     if (currentPage > 1 && numPages) {
       setCurrentPage(currentPage - 1);
     }
   };
 
+  // 다음 페이지로 이동
   const goToNextPage = () => {
     if (numPages && currentPage < numPages) {
       setCurrentPage(currentPage + 1);
@@ -134,25 +181,25 @@ const PdfViewer = ({ file }: { file: File }) => {
         </span>
       </div>
       <canvas ref={canvasRef}></canvas>
-      {/* <div>
-        <h2>Parsed Tables:</h2>
-        {parsedTables.map((table, tableIndex) => (
-          <div key={tableIndex}>
-            <h3>Table {tableIndex + 1}</h3>
+      <div>
+        {parsedContent.map((pageContent, pageIndex) => (
+          <div key={pageIndex}>
+            <h3>Page {pageIndex + 1}</h3>
             <table>
+              {/* 파싱된 내용을 테이블로 표시
               <tbody>
-                {table.map((row, rowIndex) => (
+                {pageContent.map((row, rowIndex) => (
                   <tr key={rowIndex}>
                     {row.map((cell, cellIndex) => (
                       <td key={cellIndex}>{cell}</td>
                     ))}
                   </tr>
                 ))}
-              </tbody>
+              </tbody> */}
             </table>
           </div>
         ))}
-      </div> */}
+      </div>
     </div>
   );
 };
