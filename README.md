@@ -40,7 +40,6 @@
 5. 웹 브라우저에서 http://localhost:3000 주소로 접속합니다.
 
 ## main branch
-# 주요 기능
 1. PDF 파일 업로드
 
 사용자가 PDF 파일을 업로드할 수 있도록 file prop을 통해 PDF 파일을 입력받습니다.
