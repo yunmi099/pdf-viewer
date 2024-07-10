@@ -126,4 +126,4 @@ const extractTextFromCanvas = async (canvas: HTMLCanvasElement) => {
 };
 ```
 
-다음과 같이 다양한 방식으로 테이블을 추출하고자 하였으나 테이블을 인식하는데 어려움을 겪어, 원하는 텍스트를 직접 파싱하여 테이블 형태로 표시하는 방식으로 구현하게 되었습니다. 
+matrixToTable, ocrExtractTable 브랜치에서와 같이 다양한 방식으로 테이블을 추출하고자 하였으나 테이블을 인식하는데 어려움을 겪어, 원하는 텍스트를 직접 파싱하여 테이블 형태로 표시하는 방식으로 구현하게 되었습니다. 
