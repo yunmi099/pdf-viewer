@@ -62,3 +62,68 @@ parseTextContent 함수는 PDF 페이지의 텍스트 아이템을 좌우 열로
 renderTable 함수는 파싱된 신구조문 데이터를 이용하여 테이블 형식으로 웹 페이지에 표시합니다.
 startFound 변수를 사용하여 "신·구조문대비표" 이후의 내용을 파싱합니다.
 좌우 열의 데이터를 병합하여 테이블 형식으로 렌더링합니다.
+
+## matrixToTable
+
+PDF.js 라이브러리에서 제공하는 텍스트 항목들을 받아서, 이를 행(row)과 열(column) 형태로 정리하여 2차원 배열로 반환합니다.
+
+```
+const parseTextContent = (items: TextItem[]): string[][] => {
+  // 각 행을 저장할 객체를 만듭니다. 행의 Y 좌표를 키로 사용합니다.
+  const rows: { [key: number]: { text: string, x: number }[] } = {};
+
+  // 각 텍스트 항목을 순회합니다.
+  items.forEach((item) => {
+    const transform = item.transform; // 텍스트 항목의 변환 매트릭스를 가져옵니다.
+    const x = transform[4]; // 텍스트의 X 좌표
+    const y = transform[5]; // 텍스트의 Y 좌표
+    const text = item.str; // 실제 텍스트 내용
+
+    // Y 좌표를 키로 하는 행이 없으면 새로 만듭니다.
+    if (!rows[y]) {
+      rows[y] = [];
+    }
+
+    // 해당 행에 텍스트 항목을 추가합니다.
+    rows[y].push({ text, x });
+  });
+
+  // 행들을 Y 좌표 기준으로 정렬합니다 (Y 값이 큰 것부터 작은 순서로).
+  const sortedRows = Object.keys(rows)
+    .sort((a, b) => parseFloat(b) - parseFloat(a))
+    .map((y) => {
+      const row = rows[parseFloat(y)];
+      // 각 행의 텍스트 항목들을 X 좌표 기준으로 정렬합니다.
+      row.sort((a, b) => a.x - b.x);
+      // 정렬된 텍스트 항목들의 텍스트 내용만 추출하여 배열로 만듭니다.
+      return row.map((cell) => cell.text);
+    });
+
+  console.log('Parsed Table Data:', sortedRows);
+  return sortedRows; // 최종적으로 파싱된 행렬 데이터를 반환합니다.
+};
+```
+
+## ocrExtractTable
+PDF 페이지를 캔버스에 렌더링한 후, Tesseract.js를 사용하여 텍스트를 추출하고, 추출된 텍스트에서 테이블 데이터를 인식하여 저장하는 방식으로 동작합니다. 이를 통해 PDF 파일의 특정 페이지에 포함된 표 형식의 데이터를 추출하고자 했습니다.
+
+```
+// 텍스트에서 테이블 데이터를 추출하는 함수
+const extractTableData = (text: string): string[][] => {
+  const lines = text.split('\n').filter(line => line.trim() !== ''); // 빈 줄 제거
+  const tableLines = lines.filter(line => /^\d+/.test(line)); // 숫자로 시작하는 줄 필터링
+  const table = tableLines.map(line => line.split(/\s+/)); // 공백으로 나눠서 배열로 변환
+  return table;
+};
+
+// 캔버스에서 텍스트 추출하는 함수
+const extractTextFromCanvas = async (canvas: HTMLCanvasElement) => {
+  const { data: { text } } = await Tesseract.recognize(canvas, 'kor', {
+    logger: (m) => console.log(m),
+  });
+  const tableData = extractTableData(text); // 텍스트에서 테이블 데이터 추출
+  setParsedTables(prev => [...prev, tableData]); // 추출된 테이블 데이터를 상태에 추가
+};
+```
+
+다음과 같이 다양한 방식으로 테이블을 추출하고자 하였으나 테이블을 인식하는데 어려움을 겪어, 원하는 텍스트를 직접 파싱하여 테이블 형태로 표시하는 방식으로 구현하게 되었습니다. 
